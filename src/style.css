@@ -72,6 +72,25 @@ button, input, textarea { font: inherit; }
 .stale-badge { display: inline-flex; align-items: center; gap: 4px; }
 .offline-banner { display: flex; justify-content: space-between; align-items: center; border-radius: 13px; padding: 10px 12px; margin-bottom: 13px; background: #fff6dc; color: #795300; font-size: .73rem; }
 .offline-banner.online { background: #e9f8f2; color: #126c50; }
+.review-entry { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1.5px dashed var(--primary); border-radius: 20px; padding: 14px 16px; margin-bottom: 13px; cursor: pointer; box-shadow: 0 8px 26px rgb(28 44 72 / .06); transition: transform .15s ease; }
+.review-entry:active { transform: scale(.985); }
+.review-entry.active { border-style: solid; background: var(--soft); }
+.review-entry-icon { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 14px; display: grid; place-items: center; background: var(--primary); color: white; font-weight: 800; }
+.review-entry-body { flex: 1; min-width: 0; }
+.review-entry-body strong { font-size: .92rem; }
+.review-entry-body p { margin: 4px 0 0; color: var(--muted); font-size: .7rem; line-height: 1.45; }
+.review-entry-arrow { color: var(--primary); font-size: 1.5rem; line-height: 1; }
+.review-intro { padding: 18px 16px; }
+.review-stats { margin-top: 0; }
+.review-stat { background: var(--soft); color: var(--text); border-radius: 14px; }
+.review-stat span { color: var(--muted); }
+.review-rule { color: var(--muted); font-size: .73rem; line-height: 1.6; margin: 12px 2px; }
+.review-sentence-block { border-top: 1px solid var(--line); padding: 12px 0 4px; }
+.review-sentence-block:first-of-type { border-top: 0; padding-top: 4px; }
+.review-source { color: var(--muted); font-size: .72rem; line-height: 1.55; margin: 0 0 9px; }
+.review-tip { margin: 14px 2px 0; font-size: .73rem; color: var(--success); line-height: 1.55; }
+.review-tip.wrong { color: var(--danger); }
+.exit-review { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 10px; padding: 6px 10px; font-size: .7rem; cursor: pointer; white-space: nowrap; }
 .practice-header { position: sticky; top: 0; z-index: 8; margin: -18px -16px 16px; padding: max(16px, env(safe-area-inset-top)) 16px 14px; background: color-mix(in srgb, var(--app-bg) 92%, transparent); backdrop-filter: blur(16px); border-bottom: 1px solid var(--line); }
 .practice-nav { display: flex; align-items: center; gap: 10px; }
 .practice-nav h2 { margin: 0; font-size: 1rem; flex: 1; }

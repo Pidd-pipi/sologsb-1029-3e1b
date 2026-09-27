@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { courseForLesson, exportRecords, lessonById, persist, saveAttempt, setDownloaded, state, updateTokenClassification } from './store';
-import type { ErrorCategory, Lesson, PracticeAttempt, PracticeView } from './types';
+import { courseForLesson, exitReviewSession, exportRecords, gradeReviewSentence, lessonById, persist, saveAttempt, setDownloaded, startReviewSession, state, updateTokenClassification } from './store';
+import type { SentenceGrade } from './store';
+import type { ErrorCategory, Lesson, PracticeAttempt, PracticeView, ReviewQueueItem, ReviewWordResult } from './types';
 import { compareSentence, scoreAttempt, segmentText } from './utils';
 
 const view = ref<PracticeView>(state.activeLessonId ? 'practice' : 'library');
@@ -13,6 +14,8 @@ const segmentStart = ref(0);
 const segmentEnd = ref(1);
 const teacherAttemptId = ref(state.attempts[0]?.id ?? '');
 const teacherDraft = ref(state.attempts[0]?.teacherFeedback ?? '');
+const reviewAnswer = ref('');
+const reviewGrade = ref<SentenceGrade | null>(null);
 let toastTimer = 0;
 
 const activeLesson = computed(() => lessonById(state.activeLessonId));
@@ -38,6 +41,54 @@ const resultSentence = computed(() => resultAttempt.value?.sentenceAttempts[sele
 const teacherAttempt = computed(() => state.attempts.find((attempt) => attempt.id === teacherAttemptId.value));
 const totalWords = computed(() => state.attempts.flatMap((attempt) => attempt.sentenceAttempts).flatMap((item) => item.tokens).length);
 const correctedWords = computed(() => state.attempts.flatMap((attempt) => attempt.sentenceAttempts).flatMap((item) => item.tokens).filter((token) => !token.correct && token.category !== 'unclassified').length);
+
+// ---- 错题复习 ----
+const reviewSessionKey = computed(() => state.activeReview?.sentenceOrder[0] ?? '');
+const reviewCurrentLessonId = computed(() => reviewSessionKey.value.split('|')[0] || '');
+const reviewCurrentSentenceId = computed(() => reviewSessionKey.value.split('|')[1] ?? '');
+const reviewCurrentItems = computed<ReviewQueueItem[]>(() => state.reviewQueue
+  .filter((item) => item.lessonId === reviewCurrentLessonId.value && item.sentenceId === reviewCurrentSentenceId.value)
+  .sort((a, b) => a.position - b.position || a.anchorActual.localeCompare(b.anchorActual)));
+const reviewCurrentLesson = computed(() => lessonById(reviewCurrentLessonId.value));
+const reviewCurrentSentence = computed(() => reviewCurrentLesson.value?.sentences.find((sentence) => sentence.id === reviewCurrentSentenceId.value));
+const reviewCurrentSource = computed(() => reviewCurrentItems.value[0]?.source ?? reviewCurrentSentence.value?.text ?? '');
+const reviewQueueSentenceCount = computed(() => new Set(state.reviewQueue.map((item) => `${item.lessonId}|${item.sentenceId}`)).size);
+const reviewLessonGroups = computed(() => {
+  const groups = new Map<string, { lessonId: string; courseTitle: string; lessonTitle: string; sentences: Map<string, { sentenceId: string; source: string; items: ReviewQueueItem[] }> }>();
+  for (const item of state.reviewQueue) {
+    let group = groups.get(item.lessonId);
+    if (!group) {
+      group = { lessonId: item.lessonId, courseTitle: item.courseTitle, lessonTitle: item.lessonTitle, sentences: new Map() };
+      groups.set(item.lessonId, group);
+    }
+    let sentence = group.sentences.get(item.sentenceId);
+    if (!sentence) {
+      sentence = { sentenceId: item.sentenceId, source: item.source, items: [] };
+      group.sentences.set(item.sentenceId, sentence);
+    }
+    sentence.items.push(item);
+  }
+  return [...groups.values()].map((group) => ({
+    ...group,
+    sentences: [...group.sentences.values()].map((sentence) => ({
+      ...sentence,
+      items: sentence.items.sort((a, b) => a.position - b.position || a.anchorActual.localeCompare(b.anchorActual))
+    }))
+  }));
+});
+const sessionRoundCount = computed(() => {
+  const session = state.activeReview;
+  if (!session) return 0;
+  return Object.values(session.rounds).reduce((sum, value) => sum + value, 0);
+});
+const sessionResults = computed(() => {
+  const session = state.activeReview;
+  if (!session) return [];
+  return state.reviewResults.filter((result) => result.sessionId === session.id);
+});
+const sessionWordTotal = computed(() => sessionResults.value.reduce((sum, result) => sum + result.words.length, 0));
+const sessionRemovedTotal = computed(() => sessionResults.value.reduce((sum, result) => sum + result.words.filter((word) => word.removed).length, 0));
+const reviewResultCurrentWrongCount = computed(() => reviewGrade.value?.result.words.filter((word) => !word.correct).length ?? 0);
 
 const categoryOptions: Array<{ value: ErrorCategory; label: string }> = [
   { value: 'unclassified', label: '未分类' },
@@ -78,6 +129,18 @@ watch(activeLesson, (lesson) => {
 
 watch(teacherAttemptId, (id) => {
   teacherDraft.value = state.attempts.find((attempt) => attempt.id === id)?.teacherFeedback ?? '';
+});
+
+watch(reviewSessionKey, (key) => {
+  reviewGrade.value = null;
+  reviewAnswer.value = key ? (state.reviewDrafts[key] ?? '') : '';
+}, { immediate: true });
+
+watch(reviewAnswer, (value) => {
+  const key = reviewSessionKey.value;
+  if (!key || reviewGrade.value) return;
+  if (value) state.reviewDrafts[key] = value;
+  else delete state.reviewDrafts[key];
 });
 
 function notify(message: string) {
@@ -190,6 +253,66 @@ function saveTeacherFeedback() {
   notify('教师反馈已保存');
 }
 
+// ---- 错题复习 ----
+function openReview() {
+  view.value = 'review';
+}
+
+function beginReview() {
+  if (!state.reviewQueue.length) {
+    notify('队列为空，先完成一次听写吧');
+    return;
+  }
+  startReviewSession();
+  reviewGrade.value = null;
+  reviewAnswer.value = reviewSessionKey.value ? (state.reviewDrafts[reviewSessionKey.value] ?? '') : '';
+  window.scrollTo({ top: 0 });
+}
+
+function submitReviewSentence() {
+  const lessonId = reviewCurrentLessonId.value;
+  const sentenceId = reviewCurrentSentenceId.value;
+  const source = reviewCurrentSource.value;
+  if (!lessonId || !sentenceId || !source) return;
+  if (!reviewAnswer.value.trim()) {
+    notify('请先输入这句的答案');
+    return;
+  }
+  const grade = gradeReviewSentence(lessonId, sentenceId, source, reviewAnswer.value);
+  if (!grade) return;
+  reviewGrade.value = grade;
+  reviewAnswer.value = '';
+  persist();
+  const { result, removedCount } = grade;
+  const wrong = result.words.filter((word) => !word.correct).length;
+  if (wrong) notify(`还有 ${wrong} 个词未掌握，已回到队首，请再来一遍`);
+  else if (removedCount) notify(`本句通过，${removedCount} 个错词已移出队列`);
+  else notify('答对第一次，再连续答对一次即可移出队列');
+  window.scrollTo({ top: 0 });
+}
+
+function continueReview() {
+  reviewGrade.value = null;
+  reviewAnswer.value = reviewSessionKey.value ? (state.reviewDrafts[reviewSessionKey.value] ?? '') : '';
+  window.scrollTo({ top: 0 });
+}
+
+function finishReviewSession() {
+  exitReviewSession();
+  reviewGrade.value = null;
+  reviewAnswer.value = '';
+  notify('本轮复习已结束，队列进度已保留');
+}
+
+function replayReviewWord(word: ReviewWordResult) {
+  replay(word.expected || word.actual, 0.7);
+}
+
+function wordHint(word: ReviewWordResult): string {
+  if (word.correct) return word.removed ? '连续答对两次，已移出队列' : '答对（再答对一次即可移出队列）';
+  return `你的答案：${word.actual || '未输入'} · 连续次数已清零`;
+}
+
 function toggleTheme() {
   state.theme = state.theme === 'light' ? 'dark' : 'light';
 }
@@ -268,6 +391,18 @@ onBeforeUnmount(() => {
           <span>{{ online ? '● 在线 · 数据已保存到本机' : '● 离线模式 · 可继续已下载课程' }}</span>
           <span>{{ online ? '本地优先存储' : '恢复网络后继续保存' }}</span>
         </div>
+
+        <article class="review-entry" :class="{ active: state.reviewQueue.length }" role="button" tabindex="0"
+          :aria-label="state.reviewQueue.length ? `打开错题复习，队列中有 ${state.reviewQueue.length} 个错词` : '打开错题复习'"
+          @click="openReview" @keydown.enter="openReview">
+          <div class="review-entry-icon">复</div>
+          <div class="review-entry-body">
+            <strong>错题复习</strong>
+            <p v-if="state.reviewQueue.length">{{ state.reviewQueue.length }} 个错词 · {{ reviewQueueSentenceCount }} 句待练{{ state.activeReview ? ' · 上一轮复习未完成，可继续' : '' }}</p>
+            <p v-else>提交后错词自动按课程与句子收进队列，连续答对两次才移除</p>
+          </div>
+          <span class="review-entry-arrow">›</span>
+        </article>
 
         <div class="section-head">
           <h3>课程库</h3>
@@ -391,8 +526,129 @@ onBeforeUnmount(() => {
         </section>
 
         <section v-if="resultAttempt.teacherFeedback" class="panel"><div class="feedback-card"><strong>教师反馈</strong><p>{{ resultAttempt.teacherFeedback }}</p></div></section>
-        <var-button block type="primary" @click="startLesson(activeLesson!)">返回本次课程</var-button>
+        <var-button v-if="state.reviewQueue.length" block type="primary" @click="openReview">去错题复习（{{ state.reviewQueue.length }} 个错词在队列中）</var-button>
+        <var-button block :type="state.reviewQueue.length ? 'default' : 'primary'" :variant="state.reviewQueue.length ? 'outline' : 'standard'" :style="state.reviewQueue.length ? 'margin-top: 10px' : ''" @click="startLesson(activeLesson!)">返回本次课程</var-button>
         <var-button block type="default" variant="outline" style="margin-top: 10px" @click="downloadRecords">导出练习记录</var-button>
+      </div>
+
+      <div v-else-if="view === 'review' && !state.activeReview" class="page">
+        <header class="topbar">
+          <button class="back-button" aria-label="返回课程库" @click="view = 'library'">‹</button>
+          <div class="brand"><div class="brand-mark">复</div><div><h1>错题复习</h1><p>只练还有错词的句子</p></div></div>
+        </header>
+
+        <section class="panel review-intro">
+          <template v-if="state.reviewQueue.length">
+            <div class="hero-stats review-stats">
+              <div class="hero-stat review-stat"><strong>{{ state.reviewQueue.length }}</strong><span>队列错词</span></div>
+              <div class="hero-stat review-stat"><strong>{{ reviewQueueSentenceCount }}</strong><span>待练句子</span></div>
+              <div class="hero-stat review-stat"><strong>{{ state.reviewResults.length }}</strong><span>复习记录</span></div>
+            </div>
+            <p class="review-rule">同一个词连续答对两次才移出队列；答错会回到队首并清零连续次数。</p>
+            <var-button block type="primary" @click="beginReview">开始复习</var-button>
+          </template>
+          <div v-else class="empty-state">
+            <strong>错题队列是空的</strong>
+            提交听写后，错词会按原课程、原句和词位自动收进队列。
+            <var-button block type="default" variant="outline" style="margin-top: 14px" @click="view = 'library'">返回课程库</var-button>
+          </div>
+        </section>
+
+        <template v-if="state.reviewQueue.length">
+          <div class="section-head"><h3>队列中的错词</h3><span>{{ reviewLessonGroups.length }} 个课节</span></div>
+          <article v-for="group in reviewLessonGroups" :key="group.lessonId" class="panel">
+            <div class="detail-head"><div><h3>{{ group.lessonTitle }}</h3><p>{{ group.courseTitle }}</p></div></div>
+            <div v-for="sentence in group.sentences" :key="sentence.sentenceId" class="review-sentence-block">
+              <p class="review-source">{{ sentence.source }}</p>
+              <div class="word-list">
+                <span v-for="item in sentence.items" :key="item.key" class="word-chip wrong" :title="`${item.category} · 连续答对 ${item.correctStreak}/2`">
+                  {{ item.expected || `[+${item.anchorActual}]` }}<small>{{ item.correctStreak }}/2 · {{ categoryOptions.find((option) => option.value === item.category)?.label ?? '未分类' }}</small>
+                </span>
+              </div>
+            </div>
+          </article>
+        </template>
+
+        <div class="section-head"><h3>每次复习结果</h3><span>{{ state.reviewResults.length }} 条</span></div>
+        <article v-if="state.reviewResults.length" class="panel">
+          <div v-for="result in state.reviewResults.slice(0, 8)" :key="result.id" class="history-card">
+            <div class="history-top">
+              <strong>{{ result.source }}</strong>
+              <span class="history-score">{{ result.words.filter((word) => word.correct).length }}/{{ result.words.length }} 对</span>
+            </div>
+            <p>{{ formatDate(result.answeredAt) }} · 移出 {{ result.words.filter((word) => word.removed).length }} 词 · 会话 {{ result.sessionId }}</p>
+          </div>
+          <var-button block type="primary" variant="outline" @click="downloadRecords">导出全部记录（含队列与复习结果）</var-button>
+        </article>
+      </div>
+
+      <div v-else-if="view === 'review' && state.activeReview" class="page">
+        <header class="practice-header">
+          <div class="practice-nav">
+            <button class="back-button" aria-label="返回课程库" @click="view = 'library'">‹</button>
+            <div><h2>错题复习</h2></div>
+            <button class="exit-review" @click="finishReviewSession">结束本轮</button>
+          </div>
+          <div class="progress-line">
+            <div class="sentence-count">
+              <span>队列剩余 {{ state.reviewQueue.length }} 词 · 第 {{ sessionRoundCount + 1 }} 句练习</span>
+              <span>{{ state.activeReview.sentenceOrder.length }} 句待过</span>
+            </div>
+          </div>
+        </header>
+
+        <div v-if="!reviewGrade">
+          <section class="audio-card">
+            <div class="audio-meta">
+              <button class="play-button" aria-label="播放当前句子" @click="replay(reviewCurrentSource)">▶</button>
+              <div>
+                <strong>{{ reviewCurrentLesson?.title ?? '原课程句子' }}</strong>
+                <p>听写这句，系统只检查队列中的错词。已连续答对 {{ reviewCurrentItems[0]?.correctStreak ?? 0 }}/2 的词答对即可移出。</p>
+              </div>
+            </div>
+          </section>
+
+          <div class="dictation-label"><strong>输入听到的内容</strong><span>整句作答，草稿自动保存</span></div>
+          <textarea v-model="reviewAnswer" class="answer-box" aria-label="错题复习答案" placeholder="Type what you hear..." @keydown.ctrl.enter="submitReviewSentence" @keydown.meta.enter="submitReviewSentence"></textarea>
+          <div class="practice-actions">
+            <var-button block type="default" variant="outline" @click="replay(reviewCurrentSource)">再听一次</var-button>
+            <var-button block type="primary" @click="submitReviewSentence">提交本句</var-button>
+          </div>
+
+          <section class="panel">
+            <div class="detail-head"><div><h3>本句待掌握的词（{{ reviewCurrentItems.length }}）</h3><p>{{ reviewCurrentSource }}</p></div></div>
+            <div v-if="reviewCurrentSentence" class="feedback-card">{{ reviewCurrentSentence.translation }}</div>
+            <div class="word-list" style="margin-top: 12px">
+              <span v-for="item in reviewCurrentItems" :key="item.key" class="word-chip wrong" :title="item.reason || item.category">{{ item.expected || `[+${item.anchorActual}]` }}<small>连续 {{ item.correctStreak }}/2</small></span>
+            </div>
+          </section>
+        </div>
+
+        <section v-else-if="state.activeReview" class="panel token-panel">
+          <div class="detail-head">
+            <div><h3>{{ reviewResultCurrentWrongCount ? '还没完全掌握' : '本句通过' }}</h3><p>{{ reviewGrade.result.source }}</p></div>
+            <span class="history-score">{{ reviewGrade.result.words.filter((word) => word.correct).length }}/{{ reviewGrade.result.words.length }}</span>
+          </div>
+          <div class="word-list">
+            <button v-for="word in reviewGrade.result.words" :key="word.key" class="word-chip" :class="{ wrong: !word.correct }" :title="wordHint(word)" @click="replayReviewWord(word)">
+              {{ word.expected || `[+${word.actual}]` }}
+              <small>{{ word.correct ? (word.removed ? '已移出队列' : `连对 ${word.correctStreakAfter}/2`) : `已清零 · ${word.actual || '漏写'}` }}</small>
+            </button>
+          </div>
+          <p v-if="reviewResultCurrentWrongCount" class="review-tip wrong">答错的词已回到队首，本句会重新出现在最前面。</p>
+          <p v-else-if="reviewGrade.removedCount" class="review-tip">{{ reviewGrade.removedCount }} 个词连续答对两次，已移出队列。</p>
+          <p v-else class="review-tip">再连续答对一次，这些词就会移出队列。</p>
+          <var-button block type="primary" style="margin-top: 12px" @click="continueReview">继续下一句</var-button>
+        </section>
+
+        <section v-else class="panel result-score">
+          <div class="score-ring" :style="{ '--score': '100%' }"><strong>✓</strong></div>
+          <h2>本轮复习完成</h2>
+          <p>共练习 {{ sessionRoundCount }} 句，{{ sessionWordTotal }} 词次，{{ sessionRemovedTotal }} 个错词移出队列。</p>
+          <var-button block type="primary" style="margin-top: 14px" @click="view = 'library'">返回课程库</var-button>
+          <var-button v-if="state.reviewQueue.length" block type="default" variant="outline" style="margin-top: 10px" @click="beginReview">再练一轮（{{ state.reviewQueue.length }} 词）</var-button>
+          <var-button block type="default" variant="outline" style="margin-top: 10px" @click="downloadRecords">导出复习记录</var-button>
+        </section>
       </div>
 
       <div v-else-if="view === 'teacher'" class="page">

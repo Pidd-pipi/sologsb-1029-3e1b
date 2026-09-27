@@ -65,7 +65,7 @@ export const demoCourses: Course[] = [
 ];
 
 export const createInitialState = (): PersistedState => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   courses: structuredClone(demoCourses),
   attempts: [
     {
@@ -110,5 +110,9 @@ export const createInitialState = (): PersistedState => ({
   activeSentenceId: '',
   theme: 'light',
   fontScale: 1,
-  role: 'learner'
+  role: 'learner',
+  reviewQueue: [],
+  reviewResults: [],
+  activeReview: null,
+  reviewDrafts: {}
 });
