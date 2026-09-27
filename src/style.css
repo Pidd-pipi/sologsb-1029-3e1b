@@ -122,6 +122,29 @@ button, input, textarea { font: inherit; }
 .segmented button.active { background: var(--card); color: var(--text); box-shadow: 0 1px 5px rgb(0 0 0 / .09); font-weight: 700; }
 .empty-state { text-align: center; padding: 36px 20px; color: var(--muted); }
 .empty-state strong { display: block; color: var(--text); margin-bottom: 7px; }
+.review-entry { border: 1.5px solid color-mix(in srgb, var(--primary) 35%, var(--line)); }
+.review-entry-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 13px; }
+.review-entry-icon { flex: 0 0 auto; width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--soft); color: var(--primary); font-weight: 800; }
+.review-entry-text h3 { margin: 2px 0 5px; font-size: .95rem; }
+.review-entry-text p { margin: 0; color: var(--muted); font-size: .72rem; line-height: 1.55; }
+.review-group-list { margin-top: 12px; display: grid; gap: 9px; }
+.review-group { border: 1px solid var(--line); border-radius: 14px; padding: 11px 12px; cursor: pointer; background: color-mix(in srgb, var(--card) 80%, var(--soft)); }
+.review-group-meta { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.review-group-meta strong { font-size: .74rem; }
+.review-group-meta span { font-size: .64rem; color: var(--primary); font-weight: 700; white-space: nowrap; }
+.review-group-source { margin: 6px 0 8px; color: var(--muted); font-size: .68rem; line-height: 1.5; }
+.review-word-mini { display: flex; flex-wrap: wrap; gap: 6px; }
+.review-word-mini span { font-size: .66rem; border-radius: 8px; padding: 3px 7px; background: #fff0f0; color: var(--danger); }
+[data-theme='dark'] .review-word-mini span { background: color-mix(in srgb, var(--danger) 22%, var(--card)); }
+.review-word-mini span.strike { background: var(--soft); color: var(--primary); }
+.review-word-mini em { font-style: normal; opacity: .75; margin-left: 4px; }
+.verdict-list { display: grid; gap: 8px; }
+.verdict-row { display: flex; justify-content: space-between; gap: 10px; align-items: center; border-radius: 11px; padding: 9px 11px; font-size: .74rem; }
+.verdict-row strong { font-size: .78rem; }
+.verdict-row.ok { background: #e8f7f1; color: var(--success); }
+.verdict-row.bad { background: #fff0f0; color: var(--danger); }
+[data-theme='dark'] .verdict-row.ok { background: color-mix(in srgb, var(--success) 18%, var(--card)); }
+[data-theme='dark'] .verdict-row.bad { background: color-mix(in srgb, var(--danger) 18%, var(--card)); }
 @media (min-width: 600px) {
   body { padding: 18px 0; }
   .app-shell { min-height: calc(100dvh - 36px); border-radius: 28px; }

@@ -65,12 +65,42 @@ export const demoCourses: Course[] = [
 ];
 
 export const createInitialState = (): PersistedState => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   courses: structuredClone(demoCourses),
   attempts: [
     {
+      id: 'demo-attempt-2',
+      lessonId: 'airport-01',
+      courseId: 'daily-life',
+      lessonTitle: '办理值机',
+      courseTitle: '日常英语 · 机场与出行',
+      submittedAt: '2026-09-25T09:05:00.000Z',
+      score: 78,
+      teacherFeedback: '',
+      sentenceAttempts: [
+        {
+          sentenceId: 'airport-01-s2',
+          source: 'Could I have a window seat, please?',
+          answer: 'Could I have a windo seat please?',
+          score: 78,
+          tokens: [
+            { index: 0, sourceIndex: 0, expected: 'Could', actual: 'Could', correct: true, category: 'unclassified', reason: '' },
+            { index: 1, sourceIndex: 1, expected: 'I', actual: 'I', correct: true, category: 'unclassified', reason: '' },
+            { index: 2, sourceIndex: 2, expected: 'have', actual: 'have', correct: true, category: 'unclassified', reason: '' },
+            { index: 3, sourceIndex: 3, expected: 'a', actual: 'a', correct: true, category: 'unclassified', reason: '' },
+            { index: 4, sourceIndex: 4, expected: 'window', actual: 'windo', correct: false, category: 'spelling', reason: '词尾拼写漏了 w' },
+            { index: 5, sourceIndex: 5, expected: 'seat', actual: 'seat', correct: true, category: 'unclassified', reason: '' },
+            { index: 6, sourceIndex: 6, expected: ',', actual: '', correct: false, category: 'punctuation', reason: '' },
+            { index: 7, sourceIndex: 7, expected: 'please', actual: 'please', correct: true, category: 'unclassified', reason: '' },
+            { index: 8, sourceIndex: 8, expected: '?', actual: '?', correct: true, category: 'unclassified', reason: '' }
+          ]
+        }
+      ]
+    },
+    {
       id: 'demo-attempt-1',
       lessonId: 'airport-01',
+      courseId: 'daily-life',
       lessonTitle: '办理值机',
       courseTitle: '日常英语 · 机场与出行',
       submittedAt: '2026-09-24T10:20:00.000Z',
@@ -106,6 +136,47 @@ export const createInitialState = (): PersistedState => ({
       updatedAt: '2026-09-24T10:10:00.000Z'
     }
   },
+  reviewQueue: [
+    {
+      id: 'review-airport-01-s2-w4',
+      courseId: 'daily-life',
+      courseTitle: '日常英语 · 机场与出行',
+      lessonId: 'airport-01',
+      lessonTitle: '办理值机',
+      sentenceId: 'airport-01-s2',
+      source: 'Could I have a window seat, please?',
+      translation: '请问可以给我一个靠窗座位吗？',
+      tokenIndex: 4,
+      expected: 'window',
+      actual: 'windo',
+      category: 'spelling',
+      reason: '词尾拼写漏了 w',
+      attemptId: 'demo-attempt-2',
+      enqueuedAt: '2026-09-25T09:05:00.000Z',
+      streak: 0,
+      lastReviewedAt: ''
+    },
+    {
+      id: 'review-airport-01-s2-w6',
+      courseId: 'daily-life',
+      courseTitle: '日常英语 · 机场与出行',
+      lessonId: 'airport-01',
+      lessonTitle: '办理值机',
+      sentenceId: 'airport-01-s2',
+      source: 'Could I have a window seat, please?',
+      translation: '请问可以给我一个靠窗座位吗？',
+      tokenIndex: 6,
+      expected: ',',
+      actual: '',
+      category: 'punctuation',
+      reason: '',
+      attemptId: 'demo-attempt-2',
+      enqueuedAt: '2026-09-25T09:05:00.000Z',
+      streak: 0,
+      lastReviewedAt: ''
+    }
+  ],
+  reviewResults: [],
   activeLessonId: '',
   activeSentenceId: '',
   theme: 'light',

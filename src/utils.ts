@@ -53,6 +53,7 @@ export function compareSentence(expected: string, answer: string): TokenResult[]
       const correct = expectedToken.normalized === actualToken.normalized;
       reversed.push({
         index: i - 1,
+        sourceIndex: i - 1,
         expected: expectedToken.display,
         actual: actualToken.display,
         correct,
@@ -62,10 +63,10 @@ export function compareSentence(expected: string, answer: string): TokenResult[]
       i -= 1;
       j -= 1;
     } else if (direction === 'delete' && i > 0) {
-      reversed.push({ index: i - 1, expected: expectedTokens[i - 1].display, actual: '', correct: false, category: 'omitted', reason: '' });
+      reversed.push({ index: i - 1, sourceIndex: i - 1, expected: expectedTokens[i - 1].display, actual: '', correct: false, category: 'omitted', reason: '' });
       i -= 1;
     } else if (j > 0) {
-      reversed.push({ index: Math.max(0, i - 1), expected: '', actual: actualTokens[j - 1].display, correct: false, category: 'extra', reason: '' });
+      reversed.push({ index: Math.max(0, i - 1), sourceIndex: -1, expected: '', actual: actualTokens[j - 1].display, correct: false, category: 'extra', reason: '' });
       j -= 1;
     } else {
       break;
